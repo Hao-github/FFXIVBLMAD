@@ -1,0 +1,10 @@
+/input/
+/dist/
+/__pycache__/
+/output.csv
+/build/
+/.vscode
+/first_env/
+/dist.rar
+/chromedriver.exe
+/main.spec
