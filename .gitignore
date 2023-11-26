@@ -4,7 +4,7 @@
 /output.csv
 /build/
 /.vscode
-/first_env/
+/py3.11
 /dist.rar
 /chromedriver.exe
 /main.spec
