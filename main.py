@@ -30,9 +30,9 @@ analysiser = AdAnalysiser(
     criticalNum,
     directNum,
 )
-result = analysiser.calBuffOnDamageDf()
+result = analysiser.getAnswer()
 result.to_csv("output.csv")
-realPPS = float(result["realPotency"].sum() / analysiser.getActiveTime())
+realPPS = float(result["realPotency"].sum() / analysiser.activeTime)
 print("realPPS = " + str(round(realPPS, 5)))
 print("具体数据已输出至output.csv")
 os.system("pause")

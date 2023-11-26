@@ -1,6 +1,6 @@
 /input/
 /dist/
-/__pycache__/
+*/__pycache__/
 /output.csv
 /build/
 /.vscode
@@ -8,3 +8,5 @@
 /dist.rar
 /chromedriver.exe
 /main.spec
+/__pycache__/
+/test.ipynb

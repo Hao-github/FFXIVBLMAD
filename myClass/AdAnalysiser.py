@@ -1,47 +1,78 @@
+import json
 import pandas as pd
-from buff import get_all_marker, getBuffDict
 
 
 class AdAnalysiser:
     def __init__(
-        self, damage_log: str, fight: str, tracks: str, criticalNum: int, directNum: int
+        self,
+        damage_log: str,
+        fight: str,
+        tracks: str,
+        criticalNum: int,
+        directNum: int,
+        buff: str = "黑魔ad计算器团辅名称命名.xls",
     ) -> None:
+        markerDf = pd.DataFrame()
+        for track in json.loads(open(tracks, "r", encoding="utf-8").read())["tracks"]:
+            markerDf = markerDf._append(track["markers"], ignore_index=True)  # type: ignore
+
+        # 计算初始df
         self.damageDf: pd.DataFrame = pd.read_csv(damage_log)
-        self.castDf: pd.DataFrame = pd.read_csv(fight)
-        self.markerDf: pd.DataFrame = get_all_marker(tracks)
-        self.untargetableDf = self.markerDf.query(
-            "markerType=='Untargetable'"
-        ).drop_duplicates()
-        self.buffDf = (
-            self.markerDf.query("markerType=='Info'")
-            .drop_duplicates()
-            .assign(
-                percentage=lambda x: x["description"].map(
-                    getBuffDict(criticalNum, directNum)
-                )
+        untargetableDf = markerDf.query("markerType=='Untargetable'").drop_duplicates()
+        isUntargetable = self.damageDf["time"].apply(
+            lambda x: untargetableDf.eval("time < @x < time + duration").any()
+        )
+        self.damageDf = self.damageDf[~isUntargetable]
+
+        self.activeTime: float = (
+            self.damageDf["time"].iloc[-1] - untargetableDf["duration"].sum()
+        )
+
+        self.critRate = int(200 * (criticalNum - 400) / 1900 + 50) / 1000
+        self.critDamage = int(200 * (criticalNum - 400) / 1900 + 400) / 1000
+        self.directRate = int(550 * (directNum - 400) / 1900) / 1000
+
+        self.castDf: pd.DataFrame = (
+            pd.read_csv(fight).rename({"time": "beginCastTime"}, axis=1).round(5)
+        )
+        self.buffDf: pd.DataFrame = (
+            pd.read_excel(buff)
+            .melt(
+                id_vars=["增伤百分比", "暴击率百分比", "直击率百分比"],
+                value_vars=["中文", "英文", "日文"],
+            )
+            .merge(
+                markerDf.query("markerType=='Info'").drop_duplicates(),
+                how="right",
+                left_on="value",
+                right_on="description",
+            )
+            .rename(
+                {
+                    "增伤百分比": "buff",
+                    "暴击率百分比": "critRate",
+                    "直击率百分比": "dirRate",
+                },
+                axis=1,
             )
         )
-        self.endTime: float = self.damageDf["time"].iloc[-1]
 
-    def calCastTime(self, sourceRow):
-        ret = sourceRow["damageSource"].split("@")
-        return ret[0], float(ret[1]) - 27
+    def helper(self, df):
+        critical = (df["critRate"].sum() * self.critDamage) / (
+            1 + self.critRate * self.critDamage
+        ) + 1
+        direct = df["dirRate"].sum() * 0.25 / (1 + self.directRate)
+        return (df["buff"] + 1).product() * (critical + 1) * (direct + 1)
 
-    def calSnapshotTime(self, df):
-        df["castTime"].fillna(0.5, inplace=True)
-        return df.eval("snapshotTime = beginCastTime + castTime - 0.5")
-
-    def removeUntargetableTime(self, df):
-        isUntargetable = df["time"].apply(
-            lambda x: self.untargetableDf.eval("time < @x < time + duration").any()
-        )
-        return df[~isUntargetable]
-
-    def dealDamageDf(self) -> pd.DataFrame:
+    def getAnswer(self):
         return (
-            self.damageDf.pipe(self.removeUntargetableTime)
-            .join(self.damageDf.apply(self.calCastTime, axis=1, result_type="expand"))
-            .rename({0: "action", 1: "beginCastTime"}, axis=1)
+            self.damageDf.assign(
+                action=self.damageDf.damageSource.str.split("@").str[0],
+                beginCastTime=self.damageDf.damageSource.str.split("@")
+                .str[1]
+                .astype(float)
+                - 27,
+            )
             .groupby(by="damageSource", as_index=False, sort=False)
             .agg(
                 {
@@ -51,33 +82,17 @@ class AdAnalysiser:
                     "beginCastTime": "first",
                 }
             )
-        )
-
-    def calBuffOnDamageDf(self) -> pd.DataFrame:
-        return (
-            pd.merge(
-                self.dealDamageDf().round(5),
-                self.castDf.rename({"time": "beginCastTime"}, axis=1).round(5),
-                how="left",
-                on=["beginCastTime", "action"],
-            )
+            .round(5)
+            .merge(self.castDf, how="left", on=["beginCastTime", "action"])
             .drop(["damageSource", "isGCD"], axis=1)
-            .pipe(self.calSnapshotTime)
+            .fillna(0.5)
             .assign(
+                snapshotTime=lambda x: x["beginCastTime"] + x["castTime"] - 0.5,
                 buff=lambda x: x["snapshotTime"].apply(
-                    lambda x: (
-                        self.buffDf[self.buffDf.eval("time < @x < time + duration")][
-                            "percentage"
-                        ]
-                        + 1
-                    ).product()
+                    lambda y: self.helper(
+                        self.buffDf.query("time < @y < time + duration")
+                    )
                 ),
                 realPotency=lambda x: x["potency"] * x["buff"],
             )
         )
-
-    def getEndTime(self) -> float:
-        return self.damageDf["time"].iloc[-1]
-
-    def getActiveTime(self) -> float:
-        return self.getEndTime() - self.untargetableDf["duration"].sum()
