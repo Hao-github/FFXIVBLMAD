@@ -1,5 +1,5 @@
-from myClass.AdAnalysiser import AdAnalysiser
-from myClass.Downloader import Downloader
+from AdAnalysiser import AdAnalysiser
+from Downloader import Downloader
 import os
 from configparser import ConfigParser
 
