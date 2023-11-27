@@ -1,4 +1,5 @@
 from selenium import webdriver
+from selenium.webdriver.common.by import By
 from time import sleep
 import os
 
@@ -25,17 +26,22 @@ class Downloader:
         self.driver.get(website)
 
     def downloadFromText(self, text: str):
-        try:
-            self.driver.find_element_by_xpath(
-                '//a[text()="[{0}]"]'.format(text)
-            ).click()
-        except Exception:
-            self.driver.find_element_by_xpath('//span[text()="时间轴标记"]').click()
-            self.driver.find_element_by_xpath(
-                '//a[text()="[{0}]"]'.format(text)
-            ).click()
-        finally:
-            sleep(1)
+        outerElement = self.driver.find_element(
+            By.CSS_SELECTOR,
+            "#root > div > div > div:nth-child(2) > div:nth-child(3) > div.clickable > span > span:nth-child(1)",
+        )
+        if outerElement.text == "+":
+            outerElement.click()
+        for css in [
+            "#root > div > div > div:nth-child(2) > div:nth-child(3) > div:nth-child(2) > div > div > div:nth-child(4) > div.clickable > span > span:nth-child(1)",
+            "#root > div > div > div:nth-child(2) > div:nth-child(3) > div:nth-child(2) > div > div > div:nth-child(3) > div.clickable > span > span",
+            "#root > div > div > div:nth-child(2) > div:nth-child(3) > div:nth-child(2) > div > div > div:nth-child(5) > div.clickable > span > span",
+        ]:
+            element = self.driver.find_element(By.CSS_SELECTOR, css)
+            if element.text == "-":
+                element.click()
+        self.driver.find_element(By.XPATH, '//a[text()="{0}"]'.format(text)).click()
+        sleep(1)
 
     def quit(self):
         self.driver.quit()
